@@ -1,0 +1,13 @@
+{
+    "язык": {
+        "host": "123.123.123",
+        "port": 123,
+        "username": "qwerty",
+        "password": "qwerty",
+        "timezone": "Europe/Kyiv",
+        "locale": "uk-UA",
+        "longitude": 30.5234,
+        "lantitude": 50.4501,
+        "zipcode": "01001"
+    }
+}
