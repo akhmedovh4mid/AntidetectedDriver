@@ -177,6 +177,7 @@ class Processor():
         """
         Обрабатывает веб-сайт с использованием браузера, включая проверки и сохранение результатов.
         """
+        is_breakthrough = False
         if isinstance(unit, WaitWorkUnit):
             work = unit.work
             proxy = unit.proxy
@@ -185,56 +186,88 @@ class Processor():
 
         self.logger.info(f"Обработка в браузере: {urlparse(work.link).netloc} (язык: {work.lang}, прокси: {work.lang if proxy else 'нет'})")
 
-        desktop_browser = PlaywrightDesktopBrowser(headless=True)
-        mobile_browser = (
-            PlaywrightMobileBrowser(
-                proxy=True,
-                location=LocationData(
-                    timezone=proxy.timezone,
-                    locale=proxy.locale,
-                    longitude=proxy.longitude,
-                    lantitude=proxy.lantitude,
-                    zipcode=proxy.zipcode,
-                )
-            )
-            if proxy else
-            PlaywrightMobileBrowser()
-        )
-        undetected_browser = (
-            UndetectedBrowser(
-                proxy=True,
-                location=LocationData(
-                    timezone=proxy.timezone,
-                    locale=proxy.locale,
-                    longitude=proxy.longitude,
-                    lantitude=proxy.lantitude,
-                    zipcode=proxy.zipcode,
-                )
-            )
-            if proxy else
-            UndetectedBrowser()
-        )
-
-        main_browser = None
         try:
-            if work.lang != "ru":
-                with desktop_browser as browser:
+            if proxy:
+                with PlaywrightDesktopBrowser(proxy=False, headless=True) as browser:
                     browser.goto(work.link)
                     desktop_title = browser.page.title()
 
-                with mobile_browser as browser:
-                    browser.goto(work.link)
-                    mobile_title = browser.page.title()
+                # with PlaywrightMobileBrowser(
+                #     location=LocationData(
+                #         timezone=proxy.timezone,
+                #         locale=proxy.locale,
+                #         longitude=proxy.longitude,
+                #         lantitude=proxy.lantitude,
+                #         zipcode=proxy.zipcode,
+                #     )
+                # ) as browser:
+                #     browser.goto(work.link)
+                #     mobile_title = browser.page.title()
 
-                with undetected_browser as browser:
-                    browser.goto(work.link)
-                    undetected_title = browser.driver.title
+                #     if mobile_title != desktop_title:
+                #         is_breakthrough = True
+                #         if not browser.download_website("website"):
+                #             DirManager.clear_directory(self.temp_dir)
+                #             self.logger.error(f"Ошибка загрузки сайта: {urlparse(work.link).netloc}")
+                #             self.data.append(ResultWorkUnit(
+                #                 status="error", unit=work, timestamp=datetime.now(),
+                #                 context="Проблемы при загрузке сайта",
+                #             ))
+                #             return False
 
-                if mobile_title != desktop_title:
-                    main_browser = mobile_browser
-                elif undetected_title != desktop_title:
-                    main_browser = undetected_browser
-                else:
+                #         try:
+                #             browser.pdf(self.temp_dir.joinpath("screenshot.pdf"))
+                #             self.logger.debug(f"Скриншот сохранен в PDF")
+                #         except:
+                #             DirManager.clear_directory(self.temp_dir)
+                #             self.logger.error(f"Ошибка загрузки сайта: {urlparse(work.link).netloc}")
+                #             self.data.append(ResultWorkUnit(
+                #                 status="error", unit=work, timestamp=datetime.now(),
+                #                 context="Проблемы при загрузке сайта",
+                #             ))
+                #             return False
+
+                if not is_breakthrough:
+                    with UndetectedBrowser(
+                        location=LocationData(
+                            timezone=proxy.timezone,
+                            locale=proxy.locale,
+                            longitude=proxy.longitude,
+                            lantitude=proxy.lantitude,
+                            zipcode=proxy.zipcode,
+                        )
+                    ) as browser:
+                        browser.goto(work.link)
+                        undetected_title = browser.driver.title
+
+                        if undetected_title != desktop_title:
+                            is_breakthrough = True
+                            if not browser.download_website("website"):
+                                DirManager.clear_directory(self.temp_dir)
+                                self.logger.error(f"Ошибка загрузки сайта: {urlparse(work.link).netloc}")
+                                self.data.append(ResultWorkUnit(
+                                    status="error", unit=work, timestamp=datetime.now(),
+                                    context="Проблемы при загрузке сайта",
+                                ))
+                                return False
+
+                            try:
+                                try:
+                                    browser.screenshot(self.temp_dir.joinpath("screenshot.png"))
+                                    self.logger.debug("Скриншот сохранен в PNG")
+                                except:
+                                    browser.pdf(self.temp_dir.joinpath("screenshot.pdf"))
+                                    self.logger.debug(f"Скриншот сохранен в PDF")
+                            except:
+                                DirManager.clear_directory(self.temp_dir)
+                                self.logger.error(f"Ошибка загрузки сайта: {urlparse(work.link).netloc}")
+                                self.data.append(ResultWorkUnit(
+                                    status="error", unit=work, timestamp=datetime.now(),
+                                    context="Проблемы при загрузке сайта",
+                                ))
+                                return False
+
+                if not is_breakthrough:
                     if isinstance(unit, WaitWorkUnit):
                         if (unit.attempts - 1) == 0:
                             self.logger.warning(f"Ссылка устарела после всех попыток: {urlparse(work.link).netloc}")
@@ -261,36 +294,29 @@ class Processor():
                         return False
 
             else:
-                main_browser = mobile_browser
+                with PlaywrightMobileBrowser(proxy=False) as browser:
+                    browser.goto(work.link)
 
+                    if not browser.download_website("website"):
+                        DirManager.clear_directory(self.temp_dir)
+                        self.logger.error(f"Ошибка загрузки сайта: {urlparse(work.link).netloc}")
+                        self.data.append(ResultWorkUnit(
+                            status="error", unit=work, timestamp=datetime.now(),
+                            context="Проблемы при загрузке сайта",
+                        ))
+                        return False
 
-            with main_browser as browser:
-                browser.goto(work.link, delay=5)
-
-                if not browser.download_website("website"):
-                    DirManager.clear_directory(self.temp_dir)
-                    self.logger.error(f"Ошибка загрузки сайта: {urlparse(work.link).netloc}")
-                    self.data.append(ResultWorkUnit(
-                        status="error", unit=work, timestamp=datetime.now(),
-                        context="Проблемы при загрузке сайта",
-                    ))
-                    return False
-
-                try:
                     try:
-                        browser.screenshot(self.temp_dir.joinpath("screenshot.png"))
-                        self.logger.debug("Скриншот сохранен в PNG")
-                    except:
                         browser.pdf(self.temp_dir.joinpath("screenshot.pdf"))
                         self.logger.debug(f"Скриншот сохранен в PDF")
-                except:
-                    DirManager.clear_directory(self.temp_dir)
-                    self.logger.error(f"Ошибка загрузки сайта: {urlparse(work.link).netloc}")
-                    self.data.append(ResultWorkUnit(
-                        status="error", unit=work, timestamp=datetime.now(),
-                        context="Проблемы при загрузке сайта",
-                    ))
-                    return False
+                    except:
+                        DirManager.clear_directory(self.temp_dir)
+                        self.logger.error(f"Ошибка загрузки сайта: {urlparse(work.link).netloc}")
+                        self.data.append(ResultWorkUnit(
+                            status="error", unit=work, timestamp=datetime.now(),
+                            context="Проблемы при загрузке сайта",
+                        ))
+                        return False
 
             self.download_image(work.image_url, self.temp_dir.joinpath("image.png"))
             self._save_info_file(work.link, work.title, work.description, self.temp_dir.joinpath("info.txt"))

@@ -161,7 +161,7 @@ def parse_args():
 def activate_and_run():
     # Определяем пути
     venv_path = Path(".venv")
-    main_script = Path("src/main.py")
+    main_script = Path("main.py")
 
     args = parse_args()
 
