@@ -104,43 +104,67 @@ class Proxy:
 
     def stop(self) -> bool:
         """
-        Останавливает NekoBox Core процесс
+        Останавливает NekoBox Core процесс принудительно, используя kill через psutil
+        (включая дочерние процессы)
         """
-        self.logger.info("Попытка остановки NekoBox Core")
+        self.logger.info("Попытка остановки NekoBox Core (принудительный kill через psutil)")
+
         if not self.is_running():
             self.logger.warning("NekoBox не запущен!")
             return False
 
         try:
-            self.process.terminate()
-            self.logger.debug("Отправлен сигнал terminate процессу")
+            # Получаем psutil объект процесса
+            ps_process = psutil.Process(self.process.pid)
 
+            # Убиваем весь процесс и его дочерние процессы
             try:
-                self.process.wait(timeout=5)
-                self.logger.debug("Процесс завершился после terminate")
-            except subprocess.TimeoutExpired:
-                self.logger.warning("Процесс не завершился, отправка kill")
-                self.process.kill()
+                for child in ps_process.children(recursive=True):
+                    try:
+                        child.kill()
+                        self.logger.debug(f"Убит дочерний процесс PID {child.pid}")
+                    except psutil.NoSuchProcess:
+                        pass
+
+                ps_process.kill()
+                self.logger.debug(f"Отправлен сигнал kill основному процессу PID {ps_process.pid}")
+
+            except psutil.NoSuchProcess:
+                self.logger.warning("Процесс уже завершился")
+                self.process = None
+                return True
+
+            # Проверяем завершение
+            try:
+                gone, alive = psutil.wait_procs([ps_process], timeout=2)
+                if alive:
+                    self.logger.warning("Процесс не завершился после kill!")
+                else:
+                    self.logger.debug("Процесс успешно завершен")
+            except psutil.NoSuchProcess:
+                pass
 
             self.process = None
-            self.logger.info("NekoBox успешно остановлен")
+            self.logger.info("NekoBox успешно остановлен (kill через psutil)")
             return True
+
         except Exception as e:
             self.logger.error(f"Ошибка при остановке NekoBox: {str(e)}")
             return False
 
     def is_running(self) -> bool:
         """
-        Проверяет, запущен ли процесс NekoBox Core
+        Проверяет, запущен ли процесс NekoBox Core (через psutil)
         """
         if self.process is None:
             self.logger.debug("Процесс не инициализирован")
             return False
 
         try:
-            running = psutil.Process(self.process.pid).is_running()
+            ps_process = psutil.Process(self.process.pid)
+            running = ps_process.is_running()
             self.logger.debug(f"Состояние процесса: {'запущен' if running else 'остановлен'}")
             return running
-        except psutil.NoSuchProcess:
-            self.logger.debug("Процесс не найден")
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            self.logger.debug("Процесс не найден или нет доступа")
             return False

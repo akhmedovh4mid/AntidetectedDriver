@@ -171,7 +171,7 @@ class UndetectedBrowser():
         self,
         timeout: int = 30,
         max_scroll_attempts: int = 10,
-        request_timeout: float = 5.0
+        request_timeout: float = 2.5
     ) -> None:
         """
         Ожидание полной загрузки страницы с прокруткой
@@ -607,7 +607,7 @@ class UndetectedBrowser():
                 file.write(bytes_data)
             self.logger.info(f"PDF успешно сохранен как {pdf_path}")
         else:
-            raise Exception(f"Ошибка сохранения PDF: {str(e)}")
+            raise Exception(f"Ошибка сохранения PDF")
 
     def screenshot(self, screenshot_path: str) -> None:
         """Сохранение скриншота страницы"""

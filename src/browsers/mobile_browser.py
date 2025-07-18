@@ -189,7 +189,7 @@ class PlaywrightMobileBrowser():
         self,
         timeout: int = 30,
         max_scroll_attempts: int = 10,
-        request_timeout: float = 5.0
+        request_timeout: float = 2.5
     ) -> None:
         """
         Ожидание полной загрузки страницы с прокруткой и проверкой активных запросов

@@ -9,23 +9,23 @@ from pathlib import Path
 from openpyxl.styles import Font
 from urllib.parse import urlparse
 from datetime import datetime, timedelta
+from typing import List, Optional, Union
 from openpyxl import Workbook, load_workbook
 from openpyxl.utils import get_column_letter
-from typing import List, Optional, Union
 
-from src.browsers.desktop_browser import PlaywrightDesktopBrowser
-from src.browsers.mobile_browser import PlaywrightMobileBrowser
-from src.browsers.undetected_browser import UndetectedBrowser
-from src.models.proxy_unit import ProxyUnit
-from src.models.work_unit import WorkUnit
-from src.models.proxy_manager import ProxyManager
-from src.models.wait_work_unit import WaitWorkUnit
-from src.models.result_work_unit import ResultWorkUnit
 from src.proxy.proxy import Proxy
+from src.models.work_unit import WorkUnit
+from src.models.proxy_auth import ProxyAuth
+from src.models.proxy_unit import ProxyUnit
 from src.utils.dir_manager import DirManager
 from src.utils.file_manager import FileManager
-from src.models.proxy_auth import ProxyAuth
+from src.models.proxy_manager import ProxyManager
 from src.models.location_data import LocationData
+from src.models.wait_work_unit import WaitWorkUnit
+from src.models.result_work_unit import ResultWorkUnit
+from src.browsers.undetected_browser import UndetectedBrowser
+from src.browsers.mobile_browser import PlaywrightMobileBrowser
+from src.browsers.desktop_browser import PlaywrightDesktopBrowser
 
 
 class Processor():
@@ -130,16 +130,6 @@ class Processor():
 
         self.logger.info(f"Обработка без прокси: {work.link}")
 
-        # link_is_availably = self.check_site_availability(link=work.link)
-        # if not link_is_availably:
-            # self.logger.warning(f"Ссылка недоступна: {urlparse(work.link).netloc}")
-            # self.data.append(ResultWorkUnit(
-            #     status="error", unit=work,
-            #     timestamp=datetime.now(),
-            #     context="Ссылка недоступна"
-            # ))
-            # return False
-
         if isinstance(unit, WaitWorkUnit):
             return self._process_browser(unit=unit)
         else:
@@ -170,16 +160,6 @@ class Processor():
                     password=proxy.password
                 )
             ):
-                # link_is_availably = self.check_site_availability(link=work.link, proxy=True)
-                # if not link_is_availably:
-                #     self.logger.warning(f"Ссылка недоступна через прокси: {urlparse(work.link).netloc}")
-                #     self.data.append(ResultWorkUnit(
-                #         status="error", unit=work,
-                #         timestamp=datetime.now(),
-                #         context="Ссылка недоступна"
-                #     ))
-                #     return False
-
                 if isinstance(unit, WaitWorkUnit):
                     return self._process_browser(unit=unit)
                 else:
@@ -398,33 +378,6 @@ class Processor():
             "time": datetime.now().isoformat()
         }
         FileManager.write_file(data, file_path)
-
-    def check_site_availability(self, link: str, proxy: bool = False, timeout: float = 5.0) -> bool:
-        """
-        Проверяет доступность веб-сайта, с возможностью использования прокси-сервера.
-        """
-        self.logger.debug(f"Проверка доступности сайта: {urlparse(link).netloc} (прокси: {'да' if proxy else 'нет'})")
-
-        proxy_config = {
-            "http": "socks5://127.0.0.1:2080",
-            "https": "socks5://127.0.0.1:2080"
-        } if proxy else None
-
-        try:
-            response = requests.get(
-                link,
-                timeout=timeout,
-                proxies=proxy_config,
-                allow_redirects=True
-            )
-
-            is_available = response.ok
-            self.logger.debug(f"Сайт {urlparse(link).netloc} доступен: {'да' if is_available else 'нет'}")
-            return is_available
-
-        except requests.exceptions.RequestException as e:
-            self.logger.warning(f"Ошибка проверки доступности сайта {urlparse(link).netloc}: {str(e)}")
-            return False
 
     def process_all(self):
         """
