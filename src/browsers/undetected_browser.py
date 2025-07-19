@@ -1,3 +1,4 @@
+import base64
 import os
 import time
 import shutil
@@ -8,7 +9,7 @@ import subprocess
 
 from pathlib import Path
 from bs4 import BeautifulSoup
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse, urlunparse
 from typing import Dict, List, Optional, Tuple
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import TimeoutException
@@ -425,6 +426,26 @@ class UndetectedBrowser():
             self.logger.error(f"Критическая ошибка при загрузке ресурсов: {str(e)}", exc_info=True)
             raise
 
+    @staticmethod
+    def _get_base_url(url, ensure_trailing_slash=True):
+        parsed = urlparse(url)
+        clean_url = urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", "", ""))
+        if ensure_trailing_slash and not clean_url.endswith('/'):
+            clean_url += '/'
+        return clean_url
+
+    def _convert_relative_to_absolute(self, html_content):
+        base_url = self._get_base_url(url=self.driver.current_url)
+        soup = BeautifulSoup(html_content, 'html.parser')
+
+        for a_tag in soup.find_all('a', href=True):
+            href = a_tag['href']
+            if not href.startswith(('http://', 'https://', 'mailto:', 'tel:', '#')):
+                absolute_url = urljoin(base_url, href)
+                a_tag['href'] = absolute_url
+
+        return str(soup)
+
     def _replace_urls_in_html(self, html: str, url_mapping: Dict[str, str]) -> str:
         """
         Заменяет все URL в HTML-контенте на локальные пути согласно переданному маппингу.
@@ -523,6 +544,8 @@ class UndetectedBrowser():
 
             self.options.add_argument('--disable-blink-features=AutomationControlled')
             self.options.add_argument('--disable-infobars')
+            self.options.add_argument("--disable-web-security")
+            self.options.add_argument("--disable-features=IsolateOrigins,site-per-process")
 
             self.logger.debug("Создание экземпляра Chrome")
             self.driver = Chrome(
@@ -660,6 +683,9 @@ class UndetectedBrowser():
             self.logger.info("Замена URL в HTML...")
             output_html_path = website_dir / 'index.html'
             new_html = self._replace_urls_in_html(html, url_mapping)
+
+            self.logger.info("Замена URL тегов а в HTML...")
+            new_html = self._convert_relative_to_absolute(new_html)
 
             self.logger.info(f"Сохранение модифицированного HTML: {output_html_path}")
             with open(output_html_path, 'w', encoding='utf-8') as f:
