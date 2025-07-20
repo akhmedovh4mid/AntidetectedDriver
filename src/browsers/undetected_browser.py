@@ -427,20 +427,20 @@ class UndetectedBrowser():
             raise
 
     @staticmethod
-    def _get_base_url(url, ensure_trailing_slash=True):
+    def _get_base_url(url, ensure_trailing_slash=True) -> str:
         parsed = urlparse(url)
         clean_url = urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", "", ""))
         if ensure_trailing_slash and not clean_url.endswith('/'):
             clean_url += '/'
         return clean_url
 
-    def _convert_relative_to_absolute(self, html_content):
+    def _convert_relative_to_absolute(self, html_content) -> str:
         base_url = self._get_base_url(url=self.driver.current_url)
         soup = BeautifulSoup(html_content, 'html.parser')
 
         for a_tag in soup.find_all('a', href=True):
             href = a_tag['href']
-            if not href.startswith(('http://', 'https://', 'mailto:', 'tel:', '#')):
+            if href.startswith("./"):
                 absolute_url = urljoin(base_url, href)
                 a_tag['href'] = absolute_url
 

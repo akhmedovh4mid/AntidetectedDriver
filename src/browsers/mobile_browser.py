@@ -8,7 +8,7 @@ import subprocess
 
 from pathlib import Path
 from bs4 import BeautifulSoup
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse, urlunparse
 from typing import Dict, List, Optional, Set, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from playwright.sync_api import sync_playwright, Request, Response
@@ -432,6 +432,26 @@ class PlaywrightMobileBrowser():
         self.logger.info(f"Успешно загружено {len(result)} ресурсов")
         return result
 
+    @staticmethod
+    def _get_base_url(url, ensure_trailing_slash=True) -> str:
+        parsed = urlparse(url)
+        clean_url = urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", "", ""))
+        if ensure_trailing_slash and not clean_url.endswith('/'):
+            clean_url += '/'
+        return clean_url
+
+    def _convert_relative_to_absolute(self, html_content) -> str:
+        base_url = self._get_base_url(url=self.page.url)
+        soup = BeautifulSoup(html_content, 'html.parser')
+
+        for a_tag in soup.find_all('a', href=True):
+            href = a_tag['href']
+            if href.startswith("./"):
+                absolute_url = urljoin(base_url, href)
+                a_tag['href'] = absolute_url
+
+        return str(soup)
+
     def _replace_urls_in_html(self, html_content: str, url_mapping: Dict[str, str]) -> str:
         """
         Заменяет все URL в HTML-контенте на локальные пути согласно переданному маппингу.
@@ -654,8 +674,11 @@ class PlaywrightMobileBrowser():
             url_mapping = self._download_resources(self.requests, website_dir)
 
             output_html_path = website_dir / 'index.html'
+            new_html = self._replace_urls_in_html(html, url_mapping)
+            new_html = self._convert_relative_to_absolute(new_html)
+
             with open(output_html_path, 'w', encoding='utf-8') as f:
-                f.write(self._replace_urls_in_html(html, url_mapping))
+                f.write(new_html)
             self.logger.info(f"Модифицированный HTML сохранен в: {output_html_path}")
 
             # Создаем архив при необходимости
