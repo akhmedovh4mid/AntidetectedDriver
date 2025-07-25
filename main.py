@@ -1,8 +1,6 @@
 import os
-import sys
 import time
 import json
-import signal
 import logging
 import argparse
 import requests
@@ -31,7 +29,7 @@ from src.browsers.desktop_browser import PlaywrightDesktopBrowser
 
 
 class Processor():
-    def __init__(self,excel_path: str) -> None:
+    def __init__(self, excel_path: str) -> None:
         self._setup_logging()
         self.logger = logging.getLogger(name="processor")
 
@@ -39,6 +37,7 @@ class Processor():
         self.proxy_path = Path("src/configs/proxies.json")
         self.base_dir = Path(__file__).parent
         self.temp_dir = self.base_dir.joinpath("temp")
+        self.result_excel_path = base_dir.joinpath("results.xlsx")
 
         self.logger.info(f"Инициализация WebsiteProcessor с excel_path: {self.excel_path}, proxy_path: {self.proxy_path}")
 
@@ -215,6 +214,9 @@ class Processor():
                                 status="error", unit=work, timestamp=datetime.now(),
                                 context="Проблемы при загрузке сайта",
                             ))
+                            self._add_excel_row(self.result_excel_path, self.data[-1])
+
+
                             return False
 
                         try:
@@ -227,6 +229,7 @@ class Processor():
                                 status="error", unit=work, timestamp=datetime.now(),
                                 context="Проблемы при загрузке сайта",
                             ))
+                            self._add_excel_row(self.result_excel_path, self.data[-1])
                             return False
 
                 if not is_breakthrough:
@@ -251,6 +254,7 @@ class Processor():
                                     status="error", unit=work, timestamp=datetime.now(),
                                     context="Проблемы при загрузке сайта",
                                 ))
+                                self._add_excel_row(self.result_excel_path, self.data[-1])
                                 return False
 
                             try:
@@ -267,6 +271,7 @@ class Processor():
                                     status="error", unit=work, timestamp=datetime.now(),
                                     context="Проблемы при загрузке сайта",
                                 ))
+                                self._add_excel_row(self.result_excel_path, self.data[-1])
                                 return False
 
                 if not is_breakthrough:
@@ -278,6 +283,7 @@ class Processor():
                                 timestamp=datetime.now(),
                                 context="Ссылка устарела"
                             ))
+                            self._add_excel_row(self.result_excel_path, self.data[-1])
 
                         if (unit.attempts - 1) > 0:
                             unit.attempts = unit.attempts - 1
@@ -306,6 +312,7 @@ class Processor():
                             status="error", unit=work, timestamp=datetime.now(),
                             context="Проблемы при загрузке сайта",
                         ))
+                        self._add_excel_row(self.result_excel_path, self.data[-1])
                         return False
 
                     try:
@@ -318,6 +325,7 @@ class Processor():
                             status="error", unit=work, timestamp=datetime.now(),
                             context="Проблемы при загрузке сайта",
                         ))
+                        self._add_excel_row(self.result_excel_path, self.data[-1])
                         return False
 
             self.download_image(work.image_url, self.temp_dir.joinpath("image.png"))
@@ -329,6 +337,7 @@ class Processor():
                 status="ok", path=website_path,
                 unit=work, timestamp=datetime.now()
             ))
+            self._add_excel_row(self.result_excel_path, self.data[-1])
 
             return True
 
@@ -342,6 +351,7 @@ class Processor():
                         timestamp=datetime.now(),
                         context="Ссылка устарела"
                     ))
+                    self._add_excel_row(self.result_excel_path, self.data[-1])
 
                 if (unit.attempts - 1) > 0:
                     unit.attempts = unit.attempts - 1
@@ -432,6 +442,7 @@ class Processor():
                             timestamp=datetime.now(),
                             context="Нет прокси для обработки ссылки"
                         ))
+                        self._add_excel_row(self.result_excel_path, self.data[-1])
                         error_count += 1
                         continue
 
@@ -499,7 +510,7 @@ class Processor():
         duration = (datetime.now() - start_time).total_seconds()
         self.logger.info(f"Обработка завершена. Успешно: {processed_count}, Ошибок: {error_count}, Время: {duration:.2f} секунд")
 
-    def create_excel(self, save_path: str) -> bool:
+    def _init_excel_file(self, save_path: str) -> bool:
         """
         Создает Excel-отчет с результатами обработки сайтов и сохраняет его по указанному пути.
 
@@ -511,88 +522,101 @@ class Processor():
         """
         self.logger.info(f"Начало создания Excel отчета. Путь сохранения: {save_path}")
 
-        # Проверка наличия данных
-        if not self.data:
-            self.logger.warning("Прерывание создания отчета: отсутствуют данные для отчета")
-            return False
-
-        # Преобразование пути и проверка директории
         try:
             save_path = Path(save_path).absolute()
             parent_dir = save_path.parent
 
-            if not parent_dir.exists():
-                self.logger.info(f"Создание директории для отчета: {parent_dir}")
-                parent_dir.mkdir(parents=True, exist_ok=True)
+            # Проверка и создание директории
+            parent_dir.mkdir(parents=True, exist_ok=True)
 
             if not parent_dir.is_dir():
                 self.logger.error(f"Указанный путь не является директорией: {parent_dir}")
                 return False
+
+            # Создание новой книги, если файл не существует
+            if not save_path.exists():
+                wb = Workbook()
+                ws = wb.active
+                ws.title = "Результаты обработки"
+
+                headers = [
+                    "Статус", "Контекст", "Ссылка",
+                    "Язык", "Путь", "Загружено", "Время"
+                ]
+                ws.append(headers)
+
+                # Форматирование заголовков
+                header_font = Font(bold=True)
+                for col in range(1, len(headers) + 1):
+                    cell = ws.cell(row=1, column=col)
+                    cell.font = header_font
+                    ws.column_dimensions[get_column_letter(col)].width = 20
+
+                wb.save(save_path)
+                self.logger.info(f"Excel отчет успешно создан: {save_path}")
+                return True
+
+            return True
+
+        except PermissionError as pe:
+            self.logger.error(f"Ошибка доступа к файлу {save_path}: {str(pe)}")
+            return False
         except Exception as e:
-            self.logger.error(f"Ошибка обработки пути сохранения: {str(e)}")
+            self.logger.error(f"Ошибка при создании отчета: {str(e)}", exc_info=True)
             return False
 
-        # Создание и заполнение Excel-файла
+    def _add_excel_row(self, result_excel_path: str, unit: 'ResultWorkUnit') -> bool:
+        """
+        Добавляет строку с данными в Excel-файл.
+
+        Args:
+            result_excel_path (str): Путь к Excel-файлу
+            unit (ResultWorkUnit): Объект с данными для добавления
+
+        Returns:
+            bool: True если запись успешна, False в случае ошибки
+        """
         try:
-            wb = Workbook()
+            result_excel_path = Path(result_excel_path).absolute()
+
+            if not result_excel_path.exists():
+                self.logger.warning(f"Файл отчета не найден, создаем новый: {result_excel_path}")
+                if not self._init_excel_file(result_excel_path):
+                    return False
+
+            wb = load_workbook(filename=result_excel_path)
             ws = wb.active
-            ws.title = "Результаты обработки"
 
-            # Заголовки столбцов
-            headers = [
-                "Статус", "Контекст", "Ссылка",
-                "Язык", "Путь", "Загружено", "Время"
+            # Находим первую пустую строку (оптимизированная проверка)
+            empty_row = 1
+            while ws.cell(row=empty_row, column=1).value is not None:
+                empty_row += 1
+
+            # Подготовка данных
+            row_data = [
+                str(unit.status),
+                str(unit.context),
+                str(unit.unit.link),
+                str(unit.unit.lang),
+                str(unit.path) if unit.path else "",
+                "Да" if unit.path else "Нет",
+                unit.timestamp.isoformat() if hasattr(unit, 'timestamp') else ""
             ]
-            ws.append(headers)
 
-            # Форматирование заголовков
-            for col in range(1, len(headers) + 1):
-                ws.cell(row=1, column=col).font = Font(bold=True)
-                ws.column_dimensions[get_column_letter(col)].width = 20
+            # Запись данных
+            for col, value in enumerate(row_data, start=1):
+                ws.cell(row=empty_row, column=col, value=value)
 
-            # Заполнение данными
-            for idx, unit in enumerate(self.data, start=2):
-                try:
-                    row_data = [
-                        str(unit.status),
-                        str(unit.context),
-                        str(unit.unit.link),
-                        str(unit.unit.lang),
-                        str(unit.path) if unit.path else "",
-                        "Да" if unit.path else "Нет",
-                        unit.timestamp.isoformat() if hasattr(unit, 'timestamp') else ""
-                    ]
-                    ws.append(row_data)
-
-                    # Автоподбор ширины столбцов
-                    for col in range(1, len(row_data) + 1):
-                        cell = ws.cell(row=idx, column=col)
-                        if len(str(cell.value)) > ws.column_dimensions[get_column_letter(col)].width:
-                            ws.column_dimensions[get_column_letter(col)].width = len(str(cell.value)) + 2
-
-                except Exception as unit_error:
-                    self.logger.warning(f"Ошибка обработки единицы данных {idx}: {str(unit_error)}")
-                    continue
-
-            # Сохранение файла
-            wb.save(save_path)
-            self.logger.info(f"Excel отчет успешно создан. Размер: {save_path.stat().st_size/1024:.2f} KB")
+            wb.save(result_excel_path)
+            self.logger.debug(f"Данные добавлены в строку {empty_row}. Размер файла: {result_excel_path.stat().st_size/1024:.2f} KB")
             return True
 
         except PermissionError:
-            self.logger.error(f"Ошибка доступа: невозможно сохранить файл {save_path}")
+            self.logger.error(f"Нет прав для записи в файл: {result_excel_path}")
             return False
         except Exception as e:
-            self.logger.error(f"Критическая ошибка при создании отчета: {str(e)}", exc_info=True)
+            self.logger.error(f"Ошибка при добавлении данных: {str(e)}", exc_info=True)
             return False
-
-
-class ForceExit(Exception):
-    pass
-
-
-def handle_interrupt(signum, frame):
-    raise ForceExit("Программа завершена по запросу пользователя (Ctrl+C)")
 
 
 if __name__ == "__main__":
@@ -603,30 +627,9 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     base_dir = Path(__file__).parent
-    processor = None
 
     try:
-        # Устанавливаем обработчик Ctrl+C
-        signal.signal(signal.SIGINT, handle_interrupt)
-
         processor = Processor(excel_path=args.excel_path)
         processor.process_all()
-
-    except ForceExit as e:
-        logging.getLogger(__name__).warning(str(e))
     except Exception as e:
         logging.getLogger(__name__).error(f"Критическая ошибка при выполнении: {str(e)}", exc_info=True)
-    finally:
-        if processor is not None:
-            try:
-                # Игнорируем все Ctrl+C во время сохранения
-                original_sigint = signal.signal(signal.SIGINT, signal.SIG_IGN)
-                processor.create_excel(save_path=base_dir.joinpath("results.xlsx"))
-                logging.getLogger(__name__).info("Файл успешно сохранён!")
-            except Exception as e:
-                logging.getLogger(__name__).error(f"Ошибка при сохранении файла: {str(e)}", exc_info=True)
-            finally:
-                # Восстанавливаем стандартный обработчик прерываний
-                signal.signal(signal.SIGINT, original_sigint)
-
-    sys.exit(0)
