@@ -575,7 +575,6 @@ class Processor():
                     continue
 
             # Сохранение файла
-            time.sleep(10)
             wb.save(save_path)
             self.logger.info(f"Excel отчет успешно создан. Размер: {save_path.stat().st_size/1024:.2f} KB")
             return True
