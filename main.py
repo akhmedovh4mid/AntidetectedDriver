@@ -1,6 +1,8 @@
 import os
+import sys
 import time
 import json
+import signal
 import logging
 import argparse
 import requests
@@ -573,6 +575,7 @@ class Processor():
                     continue
 
             # Сохранение файла
+            time.sleep(10)
             wb.save(save_path)
             self.logger.info(f"Excel отчет успешно создан. Размер: {save_path.stat().st_size/1024:.2f} KB")
             return True
@@ -585,6 +588,14 @@ class Processor():
             return False
 
 
+class ForceExit(Exception):
+    pass
+
+
+def handle_interrupt(signum, frame):
+    raise ForceExit("Программа завершена по запросу пользователя (Ctrl+C)")
+
+
 if __name__ == "__main__":
     # Настройка парсера аргументов командной строки
     parser = argparse.ArgumentParser(description='Обработка данных из Excel файла')
@@ -593,11 +604,30 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     base_dir = Path(__file__).parent
+    processor = None
 
     try:
+        # Устанавливаем обработчик Ctrl+C
+        signal.signal(signal.SIGINT, handle_interrupt)
+
         processor = Processor(excel_path=args.excel_path)
         processor.process_all()
+
+    except ForceExit as e:
+        logging.getLogger(__name__).warning(str(e))
     except Exception as e:
         logging.getLogger(__name__).error(f"Критическая ошибка при выполнении: {str(e)}", exc_info=True)
     finally:
-        processor.create_excel(save_path=base_dir.joinpath("results.xlsx"))
+        if processor is not None:
+            try:
+                # Игнорируем все Ctrl+C во время сохранения
+                original_sigint = signal.signal(signal.SIGINT, signal.SIG_IGN)
+                processor.create_excel(save_path=base_dir.joinpath("results.xlsx"))
+                logging.getLogger(__name__).info("Файл успешно сохранён!")
+            except Exception as e:
+                logging.getLogger(__name__).error(f"Ошибка при сохранении файла: {str(e)}", exc_info=True)
+            finally:
+                # Восстанавливаем стандартный обработчик прерываний
+                signal.signal(signal.SIGINT, original_sigint)
+
+    sys.exit(0)
